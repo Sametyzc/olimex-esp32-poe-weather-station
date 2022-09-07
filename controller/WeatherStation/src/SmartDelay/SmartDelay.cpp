@@ -1,4 +1,4 @@
-#include "SmartDelay.h"
+#include "SmartDelay.hpp"
 
 SmartDelay::SmartDelay(unsigned long delay)
 {

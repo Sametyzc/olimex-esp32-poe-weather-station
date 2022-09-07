@@ -1,4 +1,4 @@
-#include "EthernetLayer.h"
+#include "EthernetLayer.hpp"
 
 EthernetLayer::EthernetLayer(String hostname)
 {

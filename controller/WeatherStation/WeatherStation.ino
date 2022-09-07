@@ -1,8 +1,9 @@
-#include "src/EthernetLayer/EthernetLayer.h"
-#include "src/TimeLayer/TimeLayer.h"
-#include "src/SmartDelay/SmartDelay.h"
-#include "src/ClientLayer/ClientLayer.h"
-#include "src/MemorySegment/MemorySegment.h"
+#include "src/EthernetLayer/EthernetLayer.hpp"
+#include "src/TimeLayer/TimeLayer.hpp"
+#include "src/SmartDelay/SmartDelay.hpp"
+#include "src/ClientLayer/ClientLayer.hpp"
+#include "src/MemorySegment/MemorySegment.hpp"
+#include "src/SensorLayer/SensorLayer.hpp"
 
 #include <Logger.h>
 
@@ -13,6 +14,8 @@ const unsigned long delayTime = 300000; // 5 minutes
 
 const String hostname("192.168.0.137");
 const unsigned short int port = 8000;
+
+const unsigned char bmpSensorAddress = 0x76;
 
 struct WeatherData
 {
@@ -29,15 +32,34 @@ MemorySegment<WeatherData> _memorySegment(5,500);
 EthernetLayer _ethernet("esp32-weather-station-"+String(stationIndex));
 TimeLayer _time(ntpServer);
 ClientLayer _client(hostname,port,new UrlEncoded());
+SensorLayer _sensor(bmpSensorAddress);
+
+void SendWeatherData(WeatherData* weatherData)
+{
+    Variable stationIndexVariable{ .name = "stationIndex",.value = String(weatherData->stationIndex)};
+    Variable timestampVariable{ .name = "timestamp",.value = String(weatherData->timestamp)};
+    Variable temperatureVariable{ .name = "temperature",.value = String(weatherData->temperature)};
+    Variable pressureVariable{ .name = "pressure",.value = String(weatherData->pressure)};
+
+    _client.contentType->variableList.add(stationIndexVariable);
+    _client.contentType->variableList.add(timestampVariable);
+    _client.contentType->variableList.add(temperatureVariable);
+    _client.contentType->variableList.add(pressureVariable);
+
+    String response = _client.Post("/SenserData");
+    Serial.println("-----------Response-----------");
+    Serial.println(response);
+    Serial.println("------------------------------");
+}
 
 void setup() 
 {
+  Logger::setLogLevel(Logger::VERBOSE);
+
   Serial.begin(115200);
   while (!Serial) {
-    Logger::verbose("setup()", "Waiting for serial port to be ready!");
-    delay(1000);
+    delay(50);
   }
-  Logger::verbose("setup()", "Serial port connected");
 
   while (!_ethernet.IsConnected()) {
     Logger::verbose("setup()", "Waiting for ethernet connection");
@@ -53,27 +75,35 @@ void loop()
 {
   _smartDelay.StartTimer(_time.GetEpoch());
 
-  Variable stationIndexVar{ .name = "STATION",.value = String(stationIndex)};
-  Variable epochVar{ .name = "EPOCH",.value = String(_time.GetEpoch())};
-  // Variable tempertureVar{ .name = "TEMP",.value = String(_time.GetEpoch())};
-  // Variable pressureVar{ .name = "BARO",.value = String(_time.GetEpoch())};
+  WeatherData* weatherData = new WeatherData
+  {
+    .stationIndex = stationIndex,
+    .timestamp = _time.GetEpoch(),
+    .temperature = _sensor.GetTemperature(),
+    .pressure = _sensor.GetPressure()
+  };
 
   if(_ethernet.IsConnected())
   {
-    _client.contentType->variableList.add(stationIndexVar);
-    _client.contentType->variableList.add(epochVar);
-    // _client.contentType->variableList.add(tempertureVar);
-    // _client.contentType->variableList.add(pressureVar);
-
-    String response = _client.Post("/SenserData");
-    Serial.println("-----------Response-----------");
-    Serial.println(response);
-    Serial.println("------------------------------");
+    if(_memorySegment.HasValue())
+    {
+      for(int i = 0; i < _memorySegment.GetSegmentCount(); i++)
+      {
+        MsVectorData<WeatherData>* msVectorData = _memorySegment.GetSegment(i);
+        for(int j = 0; j < msVectorData->size(); j++)
+        {
+          SendWeatherData(msVectorData->at(j));
+        }
+      }
+      _memorySegment.ClearAll();
+    }
+    SendWeatherData(weatherData);
+    delete weatherData;
   }
   else
   {
     Logger::verbose("loop()", "Ethernet not connected");
-    // _memorySegment.Add(new WeatherData{stationIndex,_time.GetEpoch(),tempertureVar.value.toFloat(),pressureVar.value.toFloat()});
+    _memorySegment.Add(weatherData);
   }
 
   _smartDelay.EndTimer(_time.GetEpoch());

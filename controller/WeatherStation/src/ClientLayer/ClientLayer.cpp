@@ -1,5 +1,4 @@
-#include "ClientLayer.h"
-
+#include "ClientLayer.hpp"
 
 ClientContentType::ClientContentType() { }
 

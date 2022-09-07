@@ -23,6 +23,9 @@
         "random": "cpp",
         "initializer_list": "cpp",
         "cmath": "cpp",
-        "typeinfo": "cpp"
+        "typeinfo": "cpp",
+        "*.ipp": "cpp",
+        "type_traits": "cpp",
+        "utility": "cpp"
     }
 }
